@@ -45,9 +45,9 @@ public class Importer : MonoBehaviour
         {
             this.szProjectPath = Path.GetDirectoryName(aFilePaths[0]);
             szFileName = Path.GetFileName(aFilePaths[0]);
-            Debug.Log("Project Path: " + this.szProjectPath);
-            Debug.Log("File Name: " + szFileName);
-            Debug.Log("File Path: " + aFilePaths[0]);
+            ErrorLogger.LogInfo("Project Path: " + this.szProjectPath);
+            ErrorLogger.LogInfo("File Name: " + szFileName);
+            ErrorLogger.LogInfo("File Path: " + aFilePaths[0]);
 
             Array.Resize(ref aFilePaths, 2);
             string[] projectPath = StandaloneFileBrowser.OpenFolderPanel("Open Project Path", aFilePaths[0], false);
@@ -58,34 +58,70 @@ public class Importer : MonoBehaviour
             }
             else
             {
+                ErrorLogger.LogWarning("User cancelled project path selection");
                 return;
             }
 
-            BinaryReader binaryReader = new BinaryReader(File.Open(aFilePaths[0], FileMode.Open));
+            BinaryReader binaryReader = null;
+            try
+            {
+                binaryReader = new BinaryReader(File.Open(aFilePaths[0], FileMode.Open));
+            }
+            catch (Exception ex)
+            {
+                ErrorLogger.LogFileError("Open", aFilePaths[0], ex);
+                return;
+            }
 
             if (binaryReader == null)
             {
-                Debug.LogError("Could not open DAT file");
+                ErrorLogger.LogFileError("Open", aFilePaths[0], null);
                 return;
             }
 
-            nVersion = ReadDATVersion(ref binaryReader);
+            try
+            {
+                nVersion = ReadDATVersion(ref binaryReader);
+            }
+            catch (Exception ex)
+            {
+                ErrorLogger.LogError($"Failed to read DAT version from {szFileName}", ex);
+                return;
+            }
 
             DatReader = null;
 
             //Build the string to find the correct DAT reader class based on the version read from the DAT
             string szComponentName = "LithFAQ.DATReader" + nVersion.ToString();
-            DatReader = gameObject.AddComponent(Type.GetType(szComponentName));
+            
+            try
+            {
+                DatReader = gameObject.AddComponent(Type.GetType(szComponentName));
+            }
+            catch (Exception ex)
+            {
+                ErrorLogger.LogError($"Failed to add component: {szComponentName}", ex);
+                DatReader = null;
+            }
 
             if (DatReader == null)
             {
-                Debug.LogError("Could not find DAT reader for version " + nVersion.ToString());
+                ErrorLogger.LogLoadingError("DAT Reader", "Version " + nVersion.ToString(), $"Class {szComponentName} not found or incompatible");
                 return;
             }
 
             //load the DAT
-            IDATReader reader = (IDATReader)DatReader;
-            reader.Load(binaryReader);
+            try
+            {
+                IDATReader reader = (IDATReader)DatReader;
+                reader.Load(binaryReader);
+                ErrorLogger.LogInfo($"Successfully loaded DAT file version {nVersion}");
+            }
+            catch (Exception ex)
+            {
+                ErrorLogger.LogLoadingError("DAT", szFileName, "Failed to load data", ex);
+                return;
+            }
 
             UIActionManager.OnPostLoadLevel?.Invoke();
 
@@ -166,14 +202,23 @@ public class Importer : MonoBehaviour
             modelDefinition.modelType = type;
             if (!configButes.ContainsKey(type))
             {
-                if (File.Exists(szProjectPath + "\\Attributes\\CharacterButes.txt"))
+                string characterButesPath = szProjectPath + "\\Attributes\\CharacterButes.txt";
+                if (File.Exists(characterButesPath))
                 {
-                    ini.Open(szProjectPath + "\\Attributes\\CharacterButes.txt");
-                    configButes.Add(type, ini); //stuff this away
+                    try
+                    {
+                        ini.Open(characterButesPath);
+                        configButes.Add(type, ini); //stuff this away
+                    }
+                    catch (Exception ex)
+                    {
+                        ErrorLogger.LogFileError("Parse", characterButesPath, ex);
+                        return null;
+                    }
                 }
                 else
                 {
-                    Debug.LogError("Could not find CharacterButes.txt");
+                    ErrorLogger.LogFileError("Find", characterButesPath, null);
                     return null;
                 }
             }
@@ -192,7 +237,10 @@ public class Importer : MonoBehaviour
             item = configButes[type].GetSectionsByName(szName);
 
             if (item == null)
+            {
+                ErrorLogger.LogWarning($"Could not find section '{szName}' in CharacterButes.txt");
                 return null;
+            }
 
             foreach (var key in item)
             {
@@ -249,12 +297,20 @@ public class Importer : MonoBehaviour
                 
                 if (File.Exists(szButeFile))
                 {
-                    ini.Open(szButeFile);
-                    configButes.Add(type, ini); //stuff this away
+                    try
+                    {
+                        ini.Open(szButeFile);
+                        configButes.Add(type, ini); //stuff this away
+                    }
+                    catch (Exception ex)
+                    {
+                        ErrorLogger.LogFileError("Parse", szButeFile, ex);
+                        return null;
+                    }
                 }
                 else
                 {
-                    Debug.LogError("Could not find PickupButes.txt");
+                    ErrorLogger.LogFileError("Find", szButeFile, null);
                     return null;
                 }
             }
@@ -338,12 +394,20 @@ public class Importer : MonoBehaviour
 
                 if (File.Exists(szButeFile))
                 {
-                    ini.Open(szButeFile);
-                    configButes.Add(type, ini); //stuff this away
+                    try
+                    {
+                        ini.Open(szButeFile);
+                        configButes.Add(type, ini); //stuff this away
+                    }
+                    catch (Exception ex)
+                    {
+                        ErrorLogger.LogFileError("Parse", szButeFile, ex);
+                        return null;
+                    }
                 }
                 else
                 {
-                    Debug.LogError("Could not find PickupButes.txt");
+                    ErrorLogger.LogFileError("Find", szButeFile, null);
                     return null;
                 }
             }
@@ -437,14 +501,23 @@ public class Importer : MonoBehaviour
 
             if (!configButes.ContainsKey(type))
             {
-                if (File.Exists(szProjectPath + "\\Attributes\\PropTypes.txt"))
+                string propTypesPath = szProjectPath + "\\Attributes\\PropTypes.txt";
+                if (File.Exists(propTypesPath))
                 {
-                    ini.Open(szProjectPath + "\\Attributes\\PropTypes.txt");
-                    configButes.Add(type, ini); //stuff this away
+                    try
+                    {
+                        ini.Open(propTypesPath);
+                        configButes.Add(type, ini); //stuff this away
+                    }
+                    catch (Exception ex)
+                    {
+                        ErrorLogger.LogFileError("Parse", propTypesPath, ex);
+                        return null;
+                    }
                 }
                 else
                 {
-                    Debug.LogError("Could not find PropTypes.txt");
+                    ErrorLogger.LogFileError("Find", propTypesPath, null);
                     return null;
                 }
             }
