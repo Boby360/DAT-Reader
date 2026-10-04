@@ -277,11 +277,9 @@ public class Importer : MonoBehaviour
                         string modelName = String.Empty;
 
                         if (nVersion > 66)
-                            configButes[type].ReadValue(sections.Key, "Model", "1x1square.abc");
+                            modelName = configButes[type].ReadValue(sections.Key, "Model", "1x1square.abc");
                         else
-                            configButes[type].ReadValue(sections.Key, "HHModel", "1x1square.abc");
-                        
-                        
+                            modelName = configButes[type].ReadValue(sections.Key, "HHModel", "1x1square.abc");
 
                         if (!String.IsNullOrEmpty(modelName))
                         {
@@ -366,11 +364,9 @@ public class Importer : MonoBehaviour
                         string modelName = String.Empty;
 
                         if (nVersion > 66)
-                            configButes[type].ReadValue(sections.Key, "Model", "1x1square.abc");
+                            modelName = configButes[type].ReadValue(sections.Key, "Model", "1x1square.abc");
                         else
-                            configButes[type].ReadValue(sections.Key, "HHModel", "1x1square.abc");
-
-
+                            modelName = configButes[type].ReadValue(sections.Key, "HHModel", "1x1square.abc");
 
                         if (!String.IsNullOrEmpty(modelName))
                         {
