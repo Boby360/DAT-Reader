@@ -1,16 +1,34 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
-/// <summary>
-/// Centralized error logging system for the DAT Reader application.
-/// Logs errors to both the Unity Console and a persistent log file.
-/// </summary>
+public enum LogSeverity
+{
+    All,
+    Info,
+    Warning,
+    Error
+}
+
+public class LogEntry
+{
+    public DateTime Time;
+    public LogSeverity Severity;
+    public string Message;
+
+    public override string ToString()
+    {
+        return $"[{Time:HH:mm:ss}] {Severity}: {Message}";
+    }
+}
+
 public class ErrorLogger : MonoBehaviour
 {
     private static ErrorLogger instance;
-    private string logFilePath;
-    private static bool initialized = false;
+    private static string logFilePath;
+    private static readonly List<LogEntry> entries = new List<LogEntry>();
+    private const int MaxEntries = 200;
 
     public static ErrorLogger Instance
     {
@@ -26,6 +44,8 @@ public class ErrorLogger : MonoBehaviour
         }
     }
 
+    public static string LogFilePath => logFilePath;
+
     private void Awake()
     {
         if (instance != null && instance != this)
@@ -36,31 +56,22 @@ public class ErrorLogger : MonoBehaviour
 
         instance = this;
         DontDestroyOnLoad(gameObject);
-
-        if (!initialized)
-        {
-            InitializeLogging();
-            initialized = true;
-        }
+        InitializeLogging();
     }
 
     private void InitializeLogging()
     {
         try
         {
-            // Create Logs directory if it doesn't exist
             string logsDirectory = Path.Combine(Application.persistentDataPath, "Logs");
             if (!Directory.Exists(logsDirectory))
             {
                 Directory.CreateDirectory(logsDirectory);
             }
 
-            // Create log file with timestamp
-            string timestamp = System.DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
             logFilePath = Path.Combine(logsDirectory, $"DATReader_{timestamp}.log");
-
-            // Write initialization message
-            WriteToFile($"=== DAT Reader Error Log Started at {System.DateTime.Now} ===\n");
+            WriteToFile($"=== DAT Reader Error Log Started at {DateTime.Now} ===\n");
         }
         catch (Exception ex)
         {
@@ -68,9 +79,55 @@ public class ErrorLogger : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Log an error message with optional exception details
-    /// </summary>
+    private static void AddEntry(LogSeverity severity, string message)
+    {
+        if (entries.Count >= MaxEntries)
+        {
+            entries.RemoveAt(0);
+        }
+
+        entries.Add(new LogEntry
+        {
+            Time = DateTime.Now,
+            Severity = severity,
+            Message = message
+        });
+
+        try
+        {
+            if (!string.IsNullOrEmpty(logFilePath))
+            {
+                File.AppendAllText(logFilePath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {severity}: {message}\n");
+            }
+        }
+        catch
+        {
+            // Ignore file-write failures so logging never crashes the app.
+        }
+    }
+
+    public static List<LogEntry> GetEntries(LogSeverity filter = LogSeverity.All)
+    {
+        if (filter == LogSeverity.All)
+        {
+            return new List<LogEntry>(entries);
+        }
+
+        return entries.FindAll(x => x.Severity == filter);
+    }
+
+    public static void LogInfo(string message)
+    {
+        Debug.Log(message);
+        AddEntry(LogSeverity.Info, message);
+    }
+
+    public static void LogWarning(string message)
+    {
+        Debug.LogWarning(message);
+        AddEntry(LogSeverity.Warning, message);
+    }
+
     public static void LogError(string message, Exception ex = null)
     {
         string fullMessage = message;
@@ -80,43 +137,17 @@ public class ErrorLogger : MonoBehaviour
         }
 
         Debug.LogError(fullMessage);
-        Instance.WriteToFile($"[ERROR] {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} - {fullMessage}\n");
+        AddEntry(LogSeverity.Error, fullMessage);
     }
 
-    /// <summary>
-    /// Log a warning message
-    /// </summary>
-    public static void LogWarning(string message)
-    {
-        Debug.LogWarning(message);
-        Instance.WriteToFile($"[WARNING] {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} - {message}\n");
-    }
-
-    /// <summary>
-    /// Log an informational message
-    /// </summary>
-    public static void LogInfo(string message)
-    {
-        Debug.Log(message);
-        Instance.WriteToFile($"[INFO] {System.DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} - {message}\n");
-    }
-
-    /// <summary>
-    /// Log a file operation failure
-    /// </summary>
     public static void LogFileError(string operation, string filePath, Exception ex = null)
     {
-        string message = $"File Operation Failed - {operation}\nPath: {filePath}";
-        LogError(message, ex);
+        LogError($"File operation failed during {operation}. Path: {filePath}", ex);
     }
 
-    /// <summary>
-    /// Log a loading failure with context
-    /// </summary>
     public static void LogLoadingError(string objectType, string objectName, string reason, Exception ex = null)
     {
-        string message = $"Failed to load {objectType}: '{objectName}'\nReason: {reason}";
-        LogError(message, ex);
+        LogError($"Failed to load {objectType}: '{objectName}'. Reason: {reason}", ex);
     }
 
     private void WriteToFile(string message)
@@ -134,17 +165,11 @@ public class ErrorLogger : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Get the path to the current log file
-    /// </summary>
     public static string GetLogFilePath()
     {
-        return Instance.logFilePath;
+        return logFilePath;
     }
 
-    /// <summary>
-    /// Clear all log files (useful for debugging)
-    /// </summary>
     public static void ClearLogs()
     {
         try
@@ -152,17 +177,18 @@ public class ErrorLogger : MonoBehaviour
             string logsDirectory = Path.Combine(Application.persistentDataPath, "Logs");
             if (Directory.Exists(logsDirectory))
             {
-                string[] logFiles = Directory.GetFiles(logsDirectory, "*.log");
-                foreach (string file in logFiles)
+                foreach (string file in Directory.GetFiles(logsDirectory, "*.log"))
                 {
                     File.Delete(file);
                 }
-                LogInfo("All log files cleared.");
             }
+
+            entries.Clear();
+            LogInfo("All log files cleared.");
         }
         catch (Exception ex)
         {
-            LogError("Failed to clear log files", ex);
+            LogError("Failed to clear log files.", ex);
         }
     }
 }
